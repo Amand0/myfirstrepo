@@ -1,0 +1,331 @@
+---
+title: "ITEC 621 - Homework 3 - Lag Transformations and Cross Validation"
+author: "Your Name"
+date: "March 8, 2018"
+output: 
+  word_document:
+     toc: true
+     toc_depth: 2
+---
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(echo=T, warning=FALSE, message=FALSE)
+```
+
+(Note: I used word_document for this output, but you can also use html_document)
+
+## Submission: 
+
+Download the **HW3_YourLastName.Rmd** R Markdown file and save it with your own last name. Complete all your work in that template file, **Knit** the corresponding HTML or Word file. If you knit an HTML file, save it as a **PDF** or in a **Zip** file and submit it. Your knitted file **MUST display your R commands**. In order to do this, please ensure that the `knittr::` global option command above has `echo=T`.
+
+**IMPORTANT:** knitting your homework file into an HTML or Word file is **REQUIRED**, for several reasons we discussed in class. This means that your code MUST work. If you can't knit your R Markdown script due to errors, you can submit your .Rmd file for grading, but this will carry a  <span style="color:red">**5-point deduction**</span>.
+
+Also, please prepare your R Markdown file with a **professional appearance**, as you would for top management or an important client. Please ensure that your text and R code are in the correct sections and use appropriate tags and formats. 
+
+## Specific Instructions
+
+This HW has  <span style="color:red">**5 questions, worth 20 points each**</span>. Please present your answers in the same order as the questions and number your answers accordingly.
+
+## 1. Transformations: Lagged Variables
+
+Somtimes data sets contain more complex data structures within them. This is the case with the **economics** data set contained in the {ggplot2} library, which we will use for this exercise. Unfortunately, this causes the <span style="color:red">**slide() function to give an error**</span>. Fortunately, there is a simple fix for this by just re-creating the data frame. I have done this for you already in the script. 
+
+```{r}
+# Done for you
+library(ggplot2)
+data(economics)
+economics = as.data.frame(economics)
+
+
+```
+
+Now, from the **R Console** (NOT in the script) <span style="color:red">**[For you only]**:</span> use `?economics` to view the explanation of the variables in the data set. Familiarize yourself with the variables.
+
+1.1 Now fit a linear model that predicts personal consumption expenditures (**pce**) as a function of date (date), personal savings (psavert), unemployment (unemploy) and total population (pop). Name this model **fit.no.lag**. Display the `summary()` result for the resulting linear model. 
+
+```{r}
+fit.no.log <- lm(pce ~ date + psavert + unemploy + pop, data = economics)
+summary(fit.no.log)
+
+```
+
+1.2 Based on this summary result, does this model appear to be a good model? That is, it have a good fit? Why or why not?
+
+```{r}
+print("According to the value of r-squared, I think this model seems appropriate to this dataset. Bur because of the type of date variable, I think we'd better not choose it as a variable to build model instead as a time index.
+")
+
+```
+   
+1.3 We already have a time-ordered variable called "date" and the data is already sorted by date, so there is no need to sort the data this time. We just need to inspect the model for serial correlation using a **Durbin-Watson** test (of course, there are other tests you could use). Run a **DW test** on the **fit.no.lag** model and determine if there is **serial correlation** in the model. Provide a brief interpretation of the DW test results.
+
+```{r}
+require(lmtest)
+dwtest(fit.no.log)
+
+```
+Answer: Because of the value of Durbin test, which is nearest 0, I think there is serial correlation in the model.
+
+1.4 Regardless of your answer above, go ahead and correct for serial correlation. My own intuition tells me that personal consumption in one period will be influenced by the same personal consumption the month before. But it may also be influenced by personal consumption a year before on the same month (i.e., 12 months back). So, let's go ahead and use the **slide(){DataCombine}** function to create 2 lagged variables called **"pce.L1"** (lagged 1 month) and **"pce.L12"** (lagged 12 months).  
+
+Also, display all columns of the first **15 rows (only)** of the **economics** data set, just to double check that your lags were properly executed. If you did everything right, the second row of **pce.L1** and the 13th row of **pce.L12** should have the same value as the first row of **pce**.
+
+```{r}
+library(DataCombine)
+economics <- slide(economics, Var = "pce", NewVar = "pce.L1", slideBy = -1)
+economics <- slide(economics, Var = "pce", NewVar = "pce.L12", slideBy = -12)
+read <- economics[c(1:15),]
+read
+
+```
+
+1.5 Fit the same linear model above, but add the predictors **pce.L1** and **pce.L12**. Store the resulst of this model in an object named **fit.lag**  Display the linear model `summary()` results. Then also test this model for serial correlation with a **Durbin-Watson** test.
+
+```{r}
+fit.lag <- lm(pce ~ date + psavert + unemploy + pop + pce.L1 + pce.L12, data = economics)
+summary(fit.lag)
+dwtest(fit.lag)
+```
+
+1.6 Was serial correlation corrected with the lagged model? Why or why not?
+
+```{r}
+print("Because the value of DW is 2.164, there is no serial correlation in lagged model")
+
+```
+
+1.7 How did the results change from **fit.no.lag** to **fit.lag**? Which model is better based on the DW and ANOVA tests?
+
+```{r}
+anova(fit.no.log)
+anova(fit.lag)
+
+print("the coefficients and R-squared are change. Because the value of DW of second model is 2.4 and also its value of mean square is lower, i think second model is better")
+
+```
+
+1.8 What are the implications of having an R-square=1 (the R-square can never be 1 with real data, but with rounding it can get close to 1) and the fact that the pce.L1 coefficient is almost 1 too.
+
+```{r}
+print("R-square equals 1, which means x in the model totally explain Y, but here, we add some samples due to we do lag, obivously the R-square will increase from 0.988. The coefficient of pce.L1 is almost 1, which means there is strong serial correlation between pce and pce.L1. It also means that the result we predict is wrong, because the model is too overfitted.")
+```
+##2. Cross Validation: Random Splitting (Holdout Sample)
+
+Using the same **Salaries{car}** data set, load and attach the data set (i.e., attach(Salaries)) into your work environment.
+
+```{r}
+# Done for you
+library(car)
+data(Salaries)
+attach(Salaries)
+require(ISLR)
+```
+    
+2.1 Enter `set.seed(15)` so that you get the same results if you run your cross validation commands multiple times. Then use the `sample()` function to create an index vector called **train** which you can later use to split the data set into 80% training subsample.
+
+```{r}
+set.seed(15)
+train <- sample(nrow(Salaries), 0.8*nrow(Salaries))
+
+```
+
+**[For you only]**: To ensure you generated the correct number of observations you can type (in the R Console, not in the script):
+train
+length(train)
+
+2.2 Fit a linear model to predict **salary** using all remaining variables as predictors, using the train data subset. Store your resulting model in an object named **fit.train** and display the `summary()` results.
+
+```{r}
+fit.train <- lm(salary ~ .,data = Salaries, subset = train)
+summary(fit.train)
+```
+
+2.3 Using the **fit.train** model, compute the **MSE** for the **train** and **test** subsets. Store the results in objects named **train.mse** and **test.mse**, respectively. Then, use the `c()` function to display these twor results together with their respective labels "Train MSE" and "Test MSE"
+
+```{r}
+train.mse <- mean((salary - predict(fit.train,Salaries))[train]^2)
+test.mes <- mean((salary - predict(fit.train,Salaries))[-train]^2)
+mse.all <- c( "MSE Train"=train.mse, "MSE Test"=test.mes)
+mse.all
+```
+
+2.4 Analyze the difference between these MSE values and briefly comment on your conclusions. Is this what you expected? Why or why not?
+
+```{r}
+print("Answer: The value of MSE Test is bigger than MSE Train. This is satisfy my expection, because generally the testing a model with training subset underestimate the error")
+# In my random sample generated with set.seed(15), the Test MSE is larger than the Train MSE. This result is what I expected because the Train error generally under estimates the real error compared to the test error with different data.
+```
+
+##3. Cross Validation: K-Fold (KFCV) and Leave One Out (LOOCV)
+
+3.1  Using the **Salaries{car}** data set, fit a **GLM** model to predict salary using all predictors. Display the summary results. Store the results in an object named **glm.fit**. Tip: when you use the `glm()` function you need to specify the family and the link function. However, if you don't specify a family, the "gaussian" family (i.e., normal distribution) and the "identity" link (i.e., no transformation of the response variable) will be used as defaults. So just use the `glm()` function exactly how you use the `lm()` function and the result will be an OLS model.
+
+```{r}
+glm.fit <- glm(salary ~., data = Salaries)
+summary(glm.fit)
+
+```
+
+3.2 Using the **cv.glm(){boot}** function and the glm.fit object above, compute and display the **LOOCV MSE** (Leave One Out) for this model (stored in the first attribute of the "delta" attribute. <span style="color:blue">*Technical note: since glm() and lm() can both fit OLS models, some times it is convenient to use one or the other because other useful libraries and functions need either glm or lm objects specifically; this is one of these cases -- the cv.glm() function only works with glm() objects. However, if you are interested in R-Squares and F-Statistics you and run the same model with lm() and you should get the same results.*</span>
+
+```{r}
+require(boot)
+cv.10K <- cv.glm(Salaries, glm.fit, K=10)
+cv.loo <- cv.glm(Salaries,glm.fit)
+#cv.loo$delta[1]
+#cv.10K$delta[1]
+mes_loo_10k <- c("MSE LOOCV" = cv.loo$delta[1], "MSE 10K" = cv.10K$delta[1])
+mes_loo_10k
+```
+
+3.3 Using the same **cv.glm(){boot}** function and **glm.fit** model object, compute and display the **10-Fold** cross validation MSE for this model. 
+
+```{r}
+cv.10K <- cv.glm(Salaries, glm.fit, K=10)
+cv.10K$delta[1]
+```
+
+3.4 Compare the differences between the **10FCV** result above and this **LOOCV** result and provide a brief concluding comment. Is there a meaning to the difference between these 2 MSE values? Please explain why or why not.
+
+```{r}
+print("Answer: I found that mse for 10k always changes each tiem, but it not change for loocv. Actually, their mse are very similar, however the reason that makes difference between these 2 mse values is the value of k, when the k = n(total number), these 2 mse values will equal. ")
+```
+
+##4. Dimensionality: Multicollinearity Analysis
+
+**[For you only]**: From the R Console (not in the script), review the documentation for the College{ISLR} data set. View the data set and familiarize yourself with the variables in the data set. 
+
+4.1 Fit a full model to predict **applications** using **all** remaining variables as predictors and name it **lm.fit.all**. 
+
+<font color="red">**IMPORTANT**</font>: the colldiag() function you will use shortly sometimes fails when knitting with the ~ in the lm() function, which includes all variables. It works better if you type in all variables like this (you can copy/paste this):
+
+lm.fit.all <- lm(Apps~Accept+Enroll+Top10perc+Top25perc+F.Undergrad+P.Undergrad+Outstate+Room.Board+Books+Personal+PhD+Terminal+S.F.Ratio+perc.alumni+Expend+Grad.Rate, College)
+
+Load the **ISLR** (contains the College data set) and the **perturb** library. Then load the **College** data set with `data(College)` and then use the **colldiag(){perturb}** function to compute the **Condition Index (CI)** statistics for the *lm.fit.all** model using the attributes `scale=FALSE, center=FALSE, add.intercept=TRUE` in the `colldiag()` function.
+
+```{r}
+require(ISLR)
+library(perturb)
+require(perturb)
+lm.fit.all <- lm(Apps~Accept+Enroll+Top10perc+Top25perc+F.Undergrad+P.Undergrad+Outstate+Room.Board+Books+Personal+PhD+Terminal+S.F.Ratio+perc.alumni+Expend+Grad.Rate, College)
+
+collin.diag <- colldiag(mod = lm.fit.all, scale = FALSE, center = FALSE, add.intercept = TRUE)
+collin.diag
+```
+
+4.2 Does the CI provide evidence of severe multicollinearity with the model? Why or why not?
+
+```{r}
+print("Answer: Because some variables' CI are higher than 50, for these variables they have severe multicollinearity.")
+```
+
+4.3 Run the same `colldiag()` diagnostic a couple of times, first using `scale=FALSE, center=TRUE, add.intercept=FALSE` (to test a **centered** model) and then again using `scale=TRUE, center=TRUE, add.intercept=FALSE` (to test a **standardized** model. How do your results change? Please explain why these results changed, if they did? 
+
+```{r}
+library(perturb)
+#center it
+collin.center.diag <- colldiag(mod = lm.fit.all, scale = FALSE, center = TRUE, add.intercept = FALSE)
+collin.center.diag
+#stander and center it
+collin.stander.diag <- colldiag(mod = lm.fit.all, scale = TRUE, center = TRUE, add.intercept = FALSE)
+collin.stander.diag
+
+```
+Answer: The CI becomes lower. when we find there are too high CI, generally the way we wanna use to solve this problem is centering variables or standardizing variables, because we think predictors are highly correlated with the intercept. Clearly, after centering and standaring, CI looks better.
+
+4.4 Display the **lm.fit model** `summary()` results and the variance inflation factors **(VIF's)** for the predictors in the model.
+
+```{r}
+summary(lm.fit.all)
+vif(lm.fit.all)
+```
+
+4.5 Briefly answer: based on your VIF results, is multicollinearity a problem? Why or why not? If so, which variables pose the main problem?
+
+```{r}
+print("Answer: Based on my VIF results, they are almost under 10 except 'F.Undergrad', so F.Undergrad are problematic. ")
+```
+
+4.6 Fit a **reduced** model to predict **Apps** on **Enroll** and **Top10perc** only. Name it **lm.fit.reduced**. Display the CI (using **scale=TRUE, center=TRUE, add.intercept=FALSE**), model summary results and the VIF's.
+
+```{r}
+lm.fit.reduced <- lm(Apps ~ Enroll + Top10perc, data = College)
+collin.dig.reduced <- colldiag(mod = lm.fit.reduced, scale = TRUE, center = TRUE, add.intercept = FALSE)
+collin.dig.reduced
+summary(lm.fit.reduced)
+vif(lm.fit.reduced)
+```
+
+4.7 Is there a multicollinearity issue in the model above? Why or why not?
+
+```{r}
+print("Answer: There is no multicollinearity, because the CI are all far much lower than 30 and VIF are lower than 10.")
+```
+
+##5. Variable Selection: Subset Comparison
+
+5.1 Fit a **large** model with all variables that make sense from a business standpoint, that is: Enroll, Top10perc, Outstate, Room.Board, PhD, S.F.Ratio, Expend and Grad.Rate. Name this model **lm.fit.large**. Display the model summary results.
+
+```{r}
+lm.fit.large <- lm(Apps ~ Enroll + Top10perc + Outstate + Room.Board + PhD + S.F.Ratio + Expend + Grad.Rate, data = College )
+summary(lm.fit.large)
+```
+
+5.2 Then, compute the VIF's for this large model and then conduct an **ANOVA F** test to evaluate if the **lm.fit.large** model has more predictive power than the **lm.fit.reduced** model above. 
+
+```{r}
+vif(lm.fit.large)
+anova(lm.fit.large,lm.fit.reduced)
+```
+
+5.3 Select one of the two models above based the results of the **two tests** above and provide a brief rationale for your selection.
+
+```{r}
+print("Answer: I would like to choose lm.fit.large model, because F-TEST is significant , and the values of VIF are all under 10, which means there is no mulitycollinearity ")
+```
+
+5.4 **Best Subset Selection**. Fit the same **lm.fit.large** model above, but this time use the **regsubsets(){leaps}** function and save the resulting model in an object named **lm.fit.subsets**. Store the model summary results `summary(lm.fit.subsets)` in an object named **subset.sum** (please note that we are storing the **summary() object**, not the **lm() object**). Display **subset.sum** to see all 8 models evaluated by regsubsets(). 
+
+One nice thing about the **regsubsets()** function is that it provides various fit statistics for all the models tried. In this case, the default is 8 models (from 1 to 8 predictors), so the `fit.subsets\$rss` and `fit.subsets\$adjr2` attributes contain 2 vectors with 8 elements each, containing the RSS and Adjusted R-Squared for each of the 8 models.
+
+Display these RSS and AdjR2 values as a table by binding the 2 vectors with the `cbind()` function and naming the two columns **RSS** and **AdjR2** respectively.
+
+```{r}
+library(leaps)
+require(leaps)
+lm.fit.subsets <- regsubsets(Apps ~ Enroll + Top10perc + Outstate + Room.Board + PhD + S.F.Ratio + Expend + Grad.Rate, data = College)
+subset.sum <- summary(lm.fit.subsets)
+subset.sum
+```
+
+5.5 Plot these **RSS** and **AdjR2** side by side. Tip: (1) start with `par(mfrow=c(1,2))` to split the display into 1 row and 2 columns; (2) then use the `plot()` functions with appropriate labels and use the attribute `type="l"` to get a line; (3) then reset the display to a single plot with `par(mfrow=c(1,1))`. Based on your plot, which is the best model? Fit an `lm()` model with the predictors in your selected best model and display the `summary()` results.
+
+```{r}
+
+plot(subset.sum$rss, xlab = "Number of Variables", ylab = "RSS", type ="l" )
+plot(subset.sum$adjr2, xlab = "Number of Variables", ylab = "Adjusted RSq", type = "l")
+lm.fit.best <- lm(Apps ~Enroll + Room.Board + Expend + Grad.Rate, data = College)
+summary(lm.fit.best)
+```
+Answer: When variable number is 4, the model is the best.
+
+5.6 Let's try a couple of **Stepwise** approaches to variable selection using the **step(){stats}** function. For both approaches, do a **stepwise** to select the optimal model between **lm.fit.reduced** and **lm.fit.large** (already fitted above). **Tip:** the `scope=list()` function should have the same scope for both models, from the **lower bound** model of **lm.fit.reduced** to the **upper bound** model of lm.fit.large. Also, in both cases, use `direction="both"` (that is, stepwise) and `test="F"` to get p-values for the predictors.
+
+Name the first model **lm.step.forward** and use the **lm.fit.reduced** model as the starting base. Name the second model **lm.step.back**, use the **lm.fit.large** model as the starting base (Tip: the first approach will start with the reduced model and proceed forward towards the large model, but in a stepwise fashion. The second approach will start with the large model and proceed backwards towards the reduced model, but in a stepwise fashion).
+
+After you model both stepwise approaches, display the `summary()` for each of the 2 models.
+
+```{r}
+lm.step.forward <- step(lm.fit.reduced, scope = list(lower = lm.fit.reduced, upper = lm.fit.large), direction = "both", test = "F")
+lm.step.back <- lm(lm.fit.large, scope = list(lower = lm.fit.reduced, upper = lm.fit.large), direction = "both", test = "F")
+lm.fit.forward <- lm(Apps ~ Enroll + Top10perc + Room.Board + Expend + Grad.Rate + S.F.Ratio, data = College)
+lm.fit.back <- lm(Apps ~ Enroll + Top10perc + Room.Board + S.F.Ratio + Expend + Grad.Rate, data = College)
+summary(lm.fit.forward)
+summary(lm.fit.back)
+```
+
+5.7 Compare the two stepwise results above. Is there any difference? Also, compare your stewise model selection with the model selected above in 4.3 using regsubsets(). Are the models different? Which one would you pick? Is there an additional test to select the best of these models (no need to run the test, just answer the question)
+
+```{r}
+print("Anwser: The two final models are no difference, but are different the model selected by regsubsets function. Obviously the R-square is little bit lower in the final model(the stepwise results), but according to the plot of RSS and Adjusted RSq, when the variable number is 4, the value of RSS and Adjusted RSq is going to stable, so i would like to choose the model with regsubsets function. ")
+```
